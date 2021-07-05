@@ -85,24 +85,35 @@ do {                                                             \
     #define DISABLE_WARNING_PRINTF_FORMAT_EXTRA_ARGS
     #define DISABLE_WARNING_PRINTF_FORMAT_OVERFLOW
 
+#elif defined(__NVCC__)
+    #define DO_PRAGMA(X) _Pragma(#X)
+    #define DISABLE_WARNING_PUSH           DO_PRAGMA(push)
+    #define DISABLE_WARNING_POP            DO_PRAGMA(pop)
+    #define DISABLE_WARNING(warning_code)  DO_PRAGMA(diag_suppress warning_code)
+
+	#define DISABLE_WARNING_PRINTF_FORMAT             DISABLE_WARNING(bad_printf_format_string)
+    #define DISABLE_WARNING_PRINTF_FORMAT_EXTRA_ARGS
+    #define DISABLE_WARNING_PRINTF_FORMAT_OVERFLOW
+
 #elif defined(__GNUC__) || defined(__clang__)
     #define DO_PRAGMA(X) _Pragma(#X)
     #define DISABLE_WARNING_PUSH           DO_PRAGMA(GCC diagnostic push)
     #define DISABLE_WARNING_POP            DO_PRAGMA(GCC diagnostic pop)
     #define DISABLE_WARNING(warningName)   DO_PRAGMA(GCC diagnostic ignored #warningName)
 
-    #define DISABLE_WARNING_PRINTF_FORMAT    DISABLE_WARNING(-Wformat)
-    #define DISABLE_WARNING_PRINTF_FORMAT_EXTRA_ARGS DISABLE_WARNING(-Wformat-extra-args)
+    #define DISABLE_WARNING_PRINTF_FORMAT             DISABLE_WARNING(-Wformat)
+    #define DISABLE_WARNING_PRINTF_FORMAT_EXTRA_ARGS  DISABLE_WARNING(-Wformat-extra-args)
 #if defined(__clang__)
     #define DISABLE_WARNING_PRINTF_FORMAT_OVERFLOW
 #else
-    #define DISABLE_WARNING_PRINTF_FORMAT_OVERFLOW DISABLE_WARNING(-Wformat-overflow)
+    #define DISABLE_WARNING_PRINTF_FORMAT_OVERFLOW    DISABLE_WARNING(-Wformat-overflow)
 #endif
 #else
     #define DISABLE_WARNING_PUSH
     #define DISABLE_WARNING_POP
     #define DISABLE_WARNING_PRINTF_FORMAT
     #define DISABLE_WARNING_PRINTF_FORMAT_EXTRA_ARGS
+    #define DISABLE_WARNING_PRINTF_FORMAT_OVERFLOW
 #endif
 
 #ifdef TEST_WITH_NON_STANDARD_FORMAT_STRINGS
@@ -1020,7 +1031,10 @@ TEST_CASE("string length", "[]" ) {
   PRINTING_CHECK("123", ==, test::sprintf_, buffer, "%.7s", "123");
   PRINTING_CHECK("", ==, test::sprintf_, buffer, "%.7s", "");
   PRINTING_CHECK("1234ab", ==, test::sprintf_, buffer, "%.4s%.2s", "123456", "abcdef");
+DISABLE_WARNING_PUSH
+DISABLE_WARNING_PRINTF_FORMAT
   PRINTING_CHECK(".2s", ==, test::sprintf_, buffer, "%.4.2s", "123456");
+DISABLE_WARNING_POP
   PRINTING_CHECK("123", ==, test::sprintf_, buffer, "%.*s", 3, "123456");
 
 DISABLE_WARNING_PUSH
