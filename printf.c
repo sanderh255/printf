@@ -410,14 +410,27 @@ struct double_components {
 };
 
 #define NUM_DECIMAL_DIGITS_IN_INT64_T 18
-#define PRINTF_MAX_PRECOMPUTED_POWER_OF_10  NUM_DECIMAL_DIGITS_IN_INT64_T
-static const double powers_of_10[NUM_DECIMAL_DIGITS_IN_INT64_T] = {
-  1e00, 1e01, 1e02, 1e03, 1e04, 1e05, 1e06, 1e07, 1e08,
-  1e09, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17
-};
-
 #define PRINTF_MAX_SUPPORTED_PRECISION NUM_DECIMAL_DIGITS_IN_INT64_T - 1
+#define PRINTF_MAX_PRECOMPUTED_POWER_OF_10  NUM_DECIMAL_DIGITS_IN_INT64_T
 
+/**
+ * Access a precomputed power of 10
+ * @param e A value in the range 0...PRINTF_MAX_PRECOMPUTED_POWER_OF_10
+ */
+PRINTF_HD double power_of_10(unsigned e) {
+static
+#ifdef __CUDA_ARCH__
+  __constant__
+#else
+  const
+#endif
+  double powers_of_10[NUM_DECIMAL_DIGITS_IN_INT64_T] =
+  {
+    1e00, 1e01, 1e02, 1e03, 1e04, 1e05, 1e06, 1e07, 1e08,
+    1e09, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17
+  };
+  return powers_of_10[e];
+}
 
 // Break up a double number - which is known to be a finite non-negative number -
 // into its base-10 parts: integral - before the decimal point, and fractional - after it.
@@ -428,7 +441,7 @@ PRINTF_HD static struct double_components get_components(double number, unsigned
   number_.is_negative = get_sign(number);
   double abs_number = (number_.is_negative) ? -number : number;
   number_.integral = (int_fast64_t)abs_number;
-  double remainder = (abs_number - number_.integral) * powers_of_10[precision];
+  double remainder = (abs_number - number_.integral) * power_of_10(precision);
   number_.fractional = (int_fast64_t)remainder;
 
   remainder -= (double) number_.fractional;
@@ -436,7 +449,7 @@ PRINTF_HD static struct double_components get_components(double number, unsigned
   if (remainder > 0.5) {
     ++number_.fractional;
     // handle rollover, e.g. case 0.99 with precision 1 is 1.0
-    if ((double) number_.fractional >= powers_of_10[precision]) {
+    if ((double) number_.fractional >= power_of_10(precision)) {
       number_.fractional = 0;
       ++number_.integral;
     }
@@ -505,7 +518,7 @@ PRINTF_HD static struct double_components get_normalized_components(bool negativ
   components.is_negative = negative;
   components.integral = (int_fast64_t) apply_scaling(non_normalized, normalization);
   double remainder = non_normalized - unapply_scaling((double) components.integral, normalization);
-  double prec_power_of_10 = powers_of_10[precision];
+  double prec_power_of_10 = power_of_10(precision);
   struct scaling_factor account_for_precision = update_normalization(normalization, prec_power_of_10);
   double scaled_remainder = apply_scaling(remainder, account_for_precision);
   double rounding_threshold = 0.5;
@@ -671,7 +684,7 @@ PRINTF_HD static size_t sprint_exponential_number(out_fct_type out, char* buffer
       }
     }
     abs_exp10_covered_by_powers_table = PRINTF_ABS(exp10) < PRINTF_MAX_PRECOMPUTED_POWER_OF_10;
-    normalization.raw_factor = abs_exp10_covered_by_powers_table ? powers_of_10[PRINTF_ABS(exp10)] : conv.F;
+    normalization.raw_factor = abs_exp10_covered_by_powers_table ? power_of_10((unsigned) PRINTF_ABS(exp10)) : conv.F;
   }
 
   // We now begin accounting for the widths of the two parts of our printed field:
@@ -706,7 +719,7 @@ PRINTF_HD static size_t sprint_exponential_number(out_fct_type out, char* buffer
   // Account for roll-over, e.g. rounding from 9.99 to 100.0 - which effects
   // the exponent and may require additional tweaking of the parts
   if (fall_back_to_decimal_only_mode) {
-    if ( (flags & FLAGS_ADAPT_EXP) && exp10 >= -1 && decimal_part_components.integral == powers_of_10[exp10 + 1]) {
+    if ( (flags & FLAGS_ADAPT_EXP) && exp10 >= -1 && decimal_part_components.integral == power_of_10((unsigned)(exp10 + 1))) {
       exp10++; // Not strictly necessary, since exp10 is no longer really used
       precision--;
       // ... and it should already be the case that decimal_part_components.fractional == 0
