@@ -647,6 +647,13 @@ PRINTF_HD static size_t sprint_decimal_number(out_fct_type out, char* buffer, si
 // internal ftoa variant for exponential floating-point type, contributed by Martijn Jasperse <m.jasperse@gmail.com>
 PRINTF_HD static size_t sprint_exponential_number(out_fct_type out, char* buffer, size_t idx, size_t maxlen, double number, unsigned int precision, unsigned int width, unsigned int flags, char* buf, size_t len)
 {
+#ifdef __CUDA_ARCH__
+  // This dirty trick may help us avoid what seems to be an NVCC compiler bug,
+  // causing the `number` variable to be partially overwritten.
+  double number_ = number;
+  {
+    double number = number_;
+#endif
   const bool negative = get_sign(number);
   // This number will decrease gradually (by factors of 10) as we "extract" the exponent out of it
   double abs_number =  negative ? -number : number;
@@ -768,6 +775,9 @@ PRINTF_HD static size_t sprint_exponential_number(out_fct_type out, char* buffer
     }
   }
   return idx;
+#ifdef __CUDA_ARCH__
+  }
+#endif
 }
 #endif  // PRINTF_SUPPORT_EXPONENTIAL_SPECIFIERS
 
