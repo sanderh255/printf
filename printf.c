@@ -418,18 +418,38 @@ struct double_components {
  * @param e A value in the range 0...PRINTF_MAX_PRECOMPUTED_POWER_OF_10
  */
 PRINTF_HD double power_of_10(unsigned e) {
-static
-#ifdef __CUDA_ARCH__
-  __constant__
-#else
-  const
-#endif
-  double powers_of_10[NUM_DECIMAL_DIGITS_IN_INT64_T] =
+#ifndef __CUDA_ARCH__
+  static const double powers_of_10[NUM_DECIMAL_DIGITS_IN_INT64_T] =
   {
     1e00, 1e01, 1e02, 1e03, 1e04, 1e05, 1e06, 1e07, 1e08,
     1e09, 1e10, 1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17
   };
   return powers_of_10[e];
+#else
+  // Note: We could have used constant memory, but it's probably
+  // better to be slower and not mess with that limited resource.
+  switch(e) {
+	  case  0: return 1e00;
+	  case  1: return 1e01;
+	  case  2: return 1e02;
+	  case  3: return 1e03;
+	  case  4: return 1e04;
+	  case  5: return 1e05;
+	  case  6: return 1e06;
+	  case  7: return 1e07;
+	  case  8: return 1e08;
+	  case  9: return 1e09;
+	  case 10: return 1e10;
+	  case 11: return 1e11;
+	  case 12: return 1e12;
+	  case 13: return 1e13;
+	  case 14: return 1e14;
+	  case 15: return 1e15;
+	  case 16: return 1e16;
+	  case 17: return 1e17;
+  }
+  return 1; // Shouldn't get here
+#endif
 }
 
 // Break up a double number - which is known to be a finite non-negative number -
