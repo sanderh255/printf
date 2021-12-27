@@ -232,14 +232,14 @@ static inline void out_buffer(char character, void* buffer, size_t idx, size_t m
 
 
 // internal null output
-static inline void out_discard(char character, const void* buffer, size_t idx, size_t maxlen)
+static inline void out_discard(char character, void* buffer, size_t idx, size_t maxlen)
 {
   (void)character; (void)buffer; (void)idx; (void)maxlen;
 }
 
 
 // internal putchar_ wrapper
-static inline void out_putchar(char character, const void* buffer, size_t idx, size_t maxlen)
+static inline void out_putchar(char character, void* buffer, size_t idx, size_t maxlen)
 {
   (void)buffer; (void)idx; (void)maxlen;
   if (character) {
