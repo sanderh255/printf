@@ -42,6 +42,7 @@
 #ifdef __cplusplus
 # include <cstdarg>
 # include <cstddef>
+
 extern "C" {
 #else
 # include <stdarg.h>
@@ -70,6 +71,21 @@ __attribute__((format(__printf__, (one_based_format_index), (first_arg))))
 # define vprintf_   vprintf
 #endif
 
+#if !(defined(PRINTF_CUSTOM_INT_64) || defined(PRINTF_CUSTOM_INT_32) \
+    || defined(PRINTF_CUSTOM_INT_16))
+typedef int printf_int_t;
+typedef unsigned int printf_uint_t;
+#elif defined(PRINTF_CUSTOM_INT_64)
+typedef int64_t printf_int_t;
+typedef uint64_t printf_uint_t;
+#elif defined(PRINTF_CUSTOM_INT_32)
+typedef int32_t printf_int_t;
+typedef uint32_t printf_uint_t;
+#elif defined(PRINTF_CUSTOM_INT_16)
+typedef int16_t printf_int_t;
+typedef uint16_t printf_uint_t;
+#endif
+
 /**
  * Output a character to a custom device like UART, used by the printf() function
  * This function is declared here only. You have to write your custom implementation somewhere
@@ -86,7 +102,7 @@ void putchar_(char character);
  * @param format A string that specifies the format of the output
  * @return The number of characters that are written into the array, not counting the terminating null character
  */
-int printf_(const char* format, ...) ATTR_PRINTF(1, 2);
+printf_int_t printf_(const char* format, ...) ATTR_PRINTF(1, 2);
 
 
 /**
@@ -97,8 +113,8 @@ int printf_(const char* format, ...) ATTR_PRINTF(1, 2);
  * @param va A value identifying a variable arguments list
  * @return The number of characters that are WRITTEN into the buffer, not counting the terminating null character
  */
-int  sprintf_(char* buffer, const char* format, ...) ATTR_PRINTF(2, 3);
-int vsprintf_(char* buffer, const char* format, va_list va) ATTR_VPRINTF(2);
+printf_int_t  sprintf_(char* buffer, const char* format, ...) ATTR_PRINTF(2, 3);
+printf_int_t vsprintf_(char* buffer, const char* format, va_list va) ATTR_VPRINTF(2);
 
 
 /**
@@ -111,8 +127,8 @@ int vsprintf_(char* buffer, const char* format, va_list va) ATTR_VPRINTF(2);
  *         null character. A value equal or larger than count indicates truncation. Only when the returned value
  *         is non-negative and less than count, the string has been completely written.
  */
-int  snprintf_(char* buffer, size_t count, const char* format, ...) ATTR_PRINTF(3, 4);
-int vsnprintf_(char* buffer, size_t count, const char* format, va_list va) ATTR_VPRINTF(3);
+printf_int_t  snprintf_(char* buffer, size_t count, const char* format, ...) ATTR_PRINTF(3, 4);
+printf_int_t vsnprintf_(char* buffer, size_t count, const char* format, va_list va) ATTR_VPRINTF(3);
 
 
 /**
@@ -121,7 +137,7 @@ int vsnprintf_(char* buffer, size_t count, const char* format, va_list va) ATTR_
  * @param va A value identifying a variable arguments list
  * @return The number of characters that are WRITTEN into the buffer, not counting the terminating null character
  */
-int vprintf_(const char* format, va_list va) ATTR_VPRINTF(1);
+printf_int_t vprintf_(const char* format, va_list va) ATTR_VPRINTF(1);
 
 
 /**
@@ -133,8 +149,8 @@ int vprintf_(const char* format, va_list va) ATTR_VPRINTF(1);
  * @param va A value identifying a variable arguments list
  * @return The number of characters that are sent to the output function, not counting the terminating null character
  */
-int fctprintf(void (*out)(char character, void* arg), void* arg, const char* format, ...) ATTR_PRINTF(3, 4);
-int vfctprintf(void (*out)(char character, void* arg), void* arg, const char* format, va_list va) ATTR_VPRINTF(3);
+printf_int_t fctprintf(void (*out)(char character, void* arg), void* arg, const char* format, ...) ATTR_PRINTF(3, 4);
+printf_int_t vfctprintf(void (*out)(char character, void* arg), void* arg, const char* format, va_list va) ATTR_VPRINTF(3);
 
 #ifdef __cplusplus
 }
