@@ -260,11 +260,11 @@ static inline void out_wrapped_function(char character, void* wrapped_function, 
 
 // internal secure strlen
 // @return The length of the string (excluding the terminating 0) limited by 'maxsize'
-static inline printf_uint_t strnlen_s_(const char* str, size_t maxsize)
+static inline size_t strnlen_s_(const char* str, size_t maxsize)
 {
   const char* s;
   for (s = str; *s && maxsize--; ++s);
-  return (printf_uint_t)(s - str);
+  return (size_t)(s - str);
 }
 
 
