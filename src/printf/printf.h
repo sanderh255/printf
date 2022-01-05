@@ -42,7 +42,6 @@
 #ifdef __cplusplus
 # include <cstdarg>
 # include <cstddef>
-
 extern "C" {
 #else
 # include <stdarg.h>
