@@ -132,6 +132,7 @@
 #define FLAGS_ADAPT_EXP (1U << 11U)
 #define FLAGS_POINTER   (1U << 12U)
 // Note: Similar, but not identical, effect as FLAGS_HASH
+typedef unsigned int printf_flags_t;
 
 #define BASE_BINARY    2
 #define BASE_OCTAL     8
@@ -173,13 +174,22 @@ typedef long          printf_signed_value_t;
 
 typedef uint8_t numeric_base_t;
 
+// The printf()-family functions return an `int`; it is therefore
+// unnecessary/inappropriate to use size_t - often larger than int
+// in practice - for non-negative related values, such as widths,
+// precisions, offsets into buffers used for printing and the sizes
+// of these buffers. instead, we use:
+typedef unsigned int printf_size_t;
+
 typedef union {
   double_uint_t U;
   double        F;
 } double_with_bit_access;
 
 // This is unnecessary in C99, since compound initializers can be used,
-// but: 1. Some compilers are finicky about this; 2. Some people may want to convert this to C89;
+// but:
+// 1. Some compilers are finicky about this;
+// 2. Some people may want to convert this to C89;
 // 3. If you try to use it as C++, only C++20 supports compound literals
 static inline double_with_bit_access get_bit_access(double x)
 {
@@ -261,11 +271,13 @@ static inline void out_wrapped_function(char character, void* wrapped_function, 
 
 // internal secure strlen
 // @return The length of the string (excluding the terminating 0) limited by 'maxsize'
-static inline unsigned int strnlen_s_(const char* str, size_t maxsize)
+// @note strlen uses size_t, but wes only use this function with printf_size_t
+// variables - hence the signature.
+static inline printf_size_t strnlen_s_(const char* str, printf_size_t maxsize)
 {
   const char* s;
   for (s = str; *s && maxsize--; ++s);
-  return (unsigned int)(s - str);
+  return (printf_size_t)(s - str);
 }
 
 
@@ -277,19 +289,19 @@ static inline bool is_digit_(char ch)
 }
 
 
-// internal ASCII string to unsigned int conversion
-static unsigned int atoi_(const char** str)
+// internal ASCII string to printf_size_t conversion
+static printf_size_t atou_(const char** str)
 {
-  unsigned int i = 0U;
+  printf_size_t i = 0U;
   while (is_digit_(**str)) {
-    i = i * 10U + (unsigned int)(*((*str)++) - '0');
+    i = i * 10U + (printf_size_t)(*((*str)++) - '0');
   }
   return i;
 }
 
 
 // output the specified string in reverse, taking care of any zero-padding
-static size_t out_rev_(out_fct_type out, char* buffer, size_t idx, size_t maxlen, const char* buf, size_t len, unsigned int width, unsigned int flags)
+static size_t out_rev_(out_fct_type out, char* buffer, size_t idx, size_t maxlen, const char* buf, size_t len, printf_size_t width, printf_flags_t flags)
 {
   const size_t start_idx = idx;
 
@@ -318,7 +330,7 @@ static size_t out_rev_(out_fct_type out, char* buffer, size_t idx, size_t maxlen
 
 // Invoked by print_integer after the actual number has been printed, performing necessary
 // work on the number's prefix (as the number is initially printed in reverse order)
-static size_t print_integer_finalization(out_fct_type out, char* buffer, size_t idx, size_t maxlen, char* buf, size_t len, bool negative, numeric_base_t base, unsigned int precision, unsigned int width, unsigned int flags)
+static size_t print_integer_finalization(out_fct_type out, char* buffer, size_t idx, size_t maxlen, char* buf, size_t len, bool negative, numeric_base_t base, printf_size_t precision, printf_size_t width, printf_flags_t flags)
 {
   size_t unpadded_len = len;
 
@@ -385,7 +397,7 @@ static size_t print_integer_finalization(out_fct_type out, char* buffer, size_t 
 }
 
 // An internal itoa-like function
-static size_t print_integer(out_fct_type out, char* buffer, size_t idx, size_t maxlen, printf_unsigned_value_t value, bool negative, numeric_base_t base, unsigned int precision, unsigned int width, unsigned int flags)
+static size_t print_integer(out_fct_type out, char* buffer, size_t idx, size_t maxlen, printf_unsigned_value_t value, bool negative, numeric_base_t base, printf_size_t precision, printf_size_t width, printf_flags_t flags)
 {
   char buf[PRINTF_INTEGER_BUFFER_SIZE];
   size_t len = 0U;
@@ -436,7 +448,7 @@ static const double powers_of_10[NUM_DECIMAL_DIGITS_IN_INT64_T] = {
 // Break up a double number - which is known to be a finite non-negative number -
 // into its base-10 parts: integral - before the decimal point, and fractional - after it.
 // Taken the precision into account, but does not change it even internally.
-static struct double_components get_components(double number, unsigned int precision)
+static struct double_components get_components(double number, printf_size_t precision)
 {
   struct double_components number_;
   number_.is_negative = get_sign(number);
@@ -511,7 +523,7 @@ static struct scaling_factor update_normalization(struct scaling_factor sf, doub
   return result;
 }
 
-static struct double_components get_normalized_components(bool negative, unsigned int precision, double non_normalized, struct scaling_factor normalization)
+static struct double_components get_normalized_components(bool negative, printf_size_t precision, double non_normalized, struct scaling_factor normalization)
 {
   struct double_components components;
   components.is_negative = negative;
@@ -551,13 +563,13 @@ static struct double_components get_normalized_components(bool negative, unsigne
 #endif
 
 static size_t print_broken_up_decimal(
-  struct double_components number_, out_fct_type out, char *buffer, size_t idx, size_t maxlen, unsigned int precision,
-  unsigned int width, unsigned int flags, char *buf, size_t len)
+  struct double_components number_, out_fct_type out, char *buffer, size_t idx, size_t maxlen, printf_size_t precision,
+  printf_size_t width, printf_flags_t flags, char *buf, size_t len)
 {
   if (precision != 0U) {
     // do fractional part, as an unsigned number
 
-    unsigned int count = precision;
+    printf_size_t count = precision;
 
     // %g/%G mandates we skip the trailing 0 digits...
     if ((flags & FLAGS_ADAPT_EXP) && !(flags & FLAGS_HASH) && (number_.fractional > 0)) {
@@ -633,7 +645,7 @@ static size_t print_broken_up_decimal(
 }
 
       // internal ftoa for fixed decimal floating point
-static size_t print_decimal_number(out_fct_type out, char* buffer, size_t idx, size_t maxlen, double number, unsigned int precision, unsigned int width, unsigned int flags, char* buf, size_t len)
+static size_t print_decimal_number(out_fct_type out, char* buffer, size_t idx, size_t maxlen, double number, printf_size_t precision, printf_size_t width, printf_flags_t flags, char* buf, size_t len)
 {
   struct double_components value_ = get_components(number, precision);
   return print_broken_up_decimal(value_, out, buffer, idx, maxlen, precision, width, flags, buf, len);
@@ -641,7 +653,7 @@ static size_t print_decimal_number(out_fct_type out, char* buffer, size_t idx, s
 
 #if PRINTF_SUPPORT_EXPONENTIAL_SPECIFIERS
 // internal ftoa variant for exponential floating-point type, contributed by Martijn Jasperse <m.jasperse@gmail.com>
-static size_t print_exponential_number(out_fct_type out, char* buffer, size_t idx, size_t maxlen, double number, unsigned int precision, unsigned int width, unsigned int flags, char* buf, size_t len)
+static size_t print_exponential_number(out_fct_type out, char* buffer, size_t idx, size_t maxlen, double number, printf_size_t precision, printf_size_t width, printf_flags_t flags, char* buf, size_t len)
 {
   const bool negative = get_sign(number);
   // This number will decrease gradually (by factors of 10) as we "extract" the exponent out of it
@@ -698,7 +710,7 @@ static size_t print_exponential_number(out_fct_type out, char* buffer, size_t id
     // This also decided how we adjust the precision value - as in "%g" mode,
     // "precision" is the number of _significant digits_, and this is when we "translate"
     // the precision value to an actual number of decimal digits.
-    int precision_ = (fall_back_to_decimal_only_mode) ?
+    int precision_ = fall_back_to_decimal_only_mode ?
         (int) precision - 1 - exp10 :
         (int) precision - 1; // the presence of the exponent ensures only one significant digit comes before the decimal point
     precision = (precision_ > 0 ? (unsigned) precision_ : 0U);
@@ -732,9 +744,9 @@ static size_t print_exponential_number(out_fct_type out, char* buffer, size_t id
 
   // the exp10 format is "E%+03d" and largest possible exp10 value for a 64-bit double
   // is "307" (for 2^1023), so we set aside 4-5 characters overall
-  unsigned int exp10_part_width = fall_back_to_decimal_only_mode ? 0U : (PRINTF_ABS(exp10) < 100) ? 4U : 5U;
+  printf_size_t exp10_part_width = fall_back_to_decimal_only_mode ? 0U : (PRINTF_ABS(exp10) < 100) ? 4U : 5U;
 
-  unsigned int decimal_part_width =
+  printf_size_t decimal_part_width =
     ((flags & FLAGS_LEFT) && exp10_part_width) ?
       // We're padding on the right, so the width constraint is the exponent part's
       // problem, not the decimal part's, so we'll use as many characters as we need:
@@ -767,8 +779,7 @@ static size_t print_exponential_number(out_fct_type out, char* buffer, size_t id
 }
 #endif  // PRINTF_SUPPORT_EXPONENTIAL_SPECIFIERS
 
-
-static size_t print_floating_point(out_fct_type out, char* buffer, size_t idx, size_t maxlen, double value, unsigned int precision, unsigned int width, unsigned int flags, bool prefer_exponential)
+static size_t print_floating_point(out_fct_type out, char* buffer, size_t idx, size_t maxlen, double value, printf_size_t precision, printf_size_t width, printf_flags_t flags, bool prefer_exponential)
 {
   char buf[PRINTF_FTOA_BUFFER_SIZE];
   size_t len  = 0U;
@@ -814,10 +825,11 @@ static size_t print_floating_point(out_fct_type out, char* buffer, size_t idx, s
 #endif  // (PRINTF_SUPPORT_DECIMAL_SPECIFIERS || PRINTF_SUPPORT_EXPONENTIAL_SPECIFIERS)
 
 // internal vsnprintf
-static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const char* format, va_list va)
+static int _vsnprintf(out_fct_type out, char* buffer, printf_size_t maxlen, const char* format, va_list va)
 {
-  unsigned int flags, width, precision, n;
-  size_t idx = 0U;
+  printf_flags_t flags;
+  printf_size_t width, precision, n;
+  printf_size_t idx = 0U;
 
   if (!buffer) {
     // use null output function
@@ -854,16 +866,16 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
     // evaluate width field
     width = 0U;
     if (is_digit_(*format)) {
-      width = atoi_(&format);
+      width = (printf_size_t) atou_(&format);
     }
     else if (*format == '*') {
       const int w = va_arg(va, int);
       if (w < 0) {
         flags |= FLAGS_LEFT;    // reverse padding
-        width = (unsigned int)-w;
+        width = (printf_size_t)-w;
       }
       else {
-        width = (unsigned int)w;
+        width = (printf_size_t)w;
       }
       format++;
     }
@@ -874,11 +886,11 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
       flags |= FLAGS_PRECISION;
       format++;
       if (is_digit_(*format)) {
-        precision = atoi_(&format);
+        precision = (printf_size_t) atou_(&format);
       }
       else if (*format == '*') {
         const int precision_ = va_arg(va, int);
-        precision = precision_ > 0 ? (unsigned int)precision_ : 0U;
+        precision = precision_ > 0 ? (printf_size_t) precision_ : 0U;
         format++;
       }
     }
@@ -1037,7 +1049,7 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
           idx = out_rev_(out, buffer, idx, maxlen, ")llun(", 6, width, flags);
         }
         else {
-          unsigned int l = strnlen_s_(p, precision ? precision : (size_t)-1);
+          unsigned int l = strnlen_s_(p, precision ? (unsigned int) precision : (unsigned int) -1);
           // pre padding
           if (flags & FLAGS_PRECISION) {
             l = (l < precision ? l : precision);
@@ -1118,7 +1130,7 @@ int printf_(const char* format, ...)
   va_list va;
   va_start(va, format);
   char buffer[1];
-  const int ret = _vsnprintf(&out_putchar, buffer, (size_t)-1, format, va);
+  const int ret = _vsnprintf(&out_putchar, buffer, (printf_size_t)-1, format, va);
   va_end(va);
   return ret;
 }
@@ -1128,7 +1140,7 @@ int sprintf_(char* buffer, const char* format, ...)
 {
   va_list va;
   va_start(va, format);
-  const int ret = _vsnprintf(out_buffer, buffer, (size_t)-1, format, va);
+  const int ret = _vsnprintf(out_buffer, buffer, (printf_size_t)-1, format, va);
   va_end(va);
   return ret;
 }
@@ -1147,12 +1159,12 @@ int snprintf_(char* buffer, size_t count, const char* format, ...)
 int vprintf_(const char* format, va_list va)
 {
   char buffer[1];
-  return _vsnprintf(&out_putchar, buffer, (size_t)-1, format, va);
+  return _vsnprintf(&out_putchar, buffer, (printf_size_t)-1, format, va);
 }
 
 int vsprintf_(char* buffer, const char* format, va_list va)
 {
-  return _vsnprintf(out_buffer, buffer, (size_t)-1, format, va);
+  return _vsnprintf(out_buffer, buffer, (printf_size_t)-1, format, va);
 }
 
 int vsnprintf_(char* buffer, size_t count, const char* format, va_list va)
@@ -1173,6 +1185,6 @@ int fctprintf(void (*out)(char character, void* arg), void* arg, const char* for
 int vfctprintf(void (*out)(char character, void* arg), void* arg, const char* format, va_list va)
 {
   const out_function_wrapper_type out_fct_wrap = { out, arg };
-  return _vsnprintf(out_wrapped_function, (char*)(uintptr_t)&out_fct_wrap, (size_t)-1, format, va);
+  return _vsnprintf(out_wrapped_function, (char*)(uintptr_t)&out_fct_wrap, (printf_size_t)-1, format, va);
 }
 
