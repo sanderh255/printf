@@ -107,14 +107,6 @@
 #define PRINTF_SUPPORT_LONG_LONG 1
 #endif
 
-#if PRINTF_SUPPORT_LONG_LONG
-typedef unsigned long long printf_unsigned_value_t;
-typedef long long          printf_signed_value_t;
-#else
-typedef unsigned long printf_unsigned_value_t;
-typedef long          printf_signed_value_t;
-#endif
-
 #define PRINTF_PREFER_DECIMAL     false
 #define PRINTF_PREFER_EXPONENTIAL true
 
@@ -146,8 +138,6 @@ typedef long          printf_signed_value_t;
 #define BASE_DECIMAL  10
 #define BASE_HEX      16
 
-typedef uint8_t numeric_base_t;
-
 #if (PRINTF_SUPPORT_DECIMAL_SPECIFIERS || PRINTF_SUPPORT_EXPONENTIAL_SPECIFIERS)
 #include <float.h>
 #if FLT_RADIX != 2
@@ -172,6 +162,16 @@ typedef uint64_t double_uint_t;
 #error "Unsupported double type configuration"
 #endif
 #define DOUBLE_STORED_MANTISSA_BITS (DBL_MANT_DIG - 1)
+
+#if PRINTF_SUPPORT_LONG_LONG
+typedef unsigned long long printf_unsigned_value_t;
+typedef long long          printf_signed_value_t;
+#else
+typedef unsigned long printf_unsigned_value_t;
+typedef long          printf_signed_value_t;
+#endif
+
+typedef uint8_t numeric_base_t;
 
 typedef union {
   double_uint_t U;
@@ -351,10 +351,8 @@ static size_t print_integer_finalization(out_fct_type out, char* buffer, size_t 
       if (unpadded_len < len) {
         len--;
       }
-      if (len && (base == BASE_HEX)) {
-        if (unpadded_len < len) {
-          len--;
-        }
+      if (len && (base == BASE_HEX) && (unpadded_len < len)) {
+        len--;
       }
     }
     if ((base == BASE_HEX) && !(flags & FLAGS_UPPERCASE) && (len < PRINTF_INTEGER_BUFFER_SIZE)) {
@@ -457,11 +455,9 @@ static struct double_components get_components(double number, unsigned int preci
       ++number_.integral;
     }
   }
-  else if (remainder == 0.5) {
-    if ((number_.fractional == 0U) || (number_.fractional & 1U)) {
-      // if halfway, round up if odd OR if last digit is 0
-      ++number_.fractional;
-    }
+  else if ((remainder == 0.5) && ((number_.fractional == 0U) || (number_.fractional & 1U))) {
+    // if halfway, round up if odd OR if last digit is 0
+    ++number_.fractional;
   }
 
   if (precision == 0U) {
@@ -475,6 +471,7 @@ static struct double_components get_components(double number, unsigned int preci
   return number_;
 }
 
+#if PRINTF_SUPPORT_EXPONENTIAL_SPECIFIERS
 struct scaling_factor {
   double raw_factor;
   bool multiply; // if true, need to multiply by raw_factor; otherwise need to divide by it
@@ -514,7 +511,6 @@ static struct scaling_factor update_normalization(struct scaling_factor sf, doub
   return result;
 }
 
-#if PRINTF_SUPPORT_EXPONENTIAL_SPECIFIERS
 static struct double_components get_normalized_components(bool negative, unsigned int precision, double non_normalized, struct scaling_factor normalization)
 {
   struct double_components components;
@@ -563,17 +559,15 @@ static size_t print_broken_up_decimal(
 
     unsigned int count = precision;
 
-    if (flags & FLAGS_ADAPT_EXP && !(flags & FLAGS_HASH)) {
-      // %g/%G mandates we skip the trailing 0 digits...
-      if (number_.fractional > 0) {
-        while(true) {
-          int_fast64_t digit = number_.fractional % 10U;
-          if (digit != 0) {
-            break;
-          }
-          --count;
-          number_.fractional /= 10U;
+    // %g/%G mandates we skip the trailing 0 digits...
+    if ((flags & FLAGS_ADAPT_EXP) && !(flags & FLAGS_HASH) && (number_.fractional > 0)) {
+      while(true) {
+        int_fast64_t digit = number_.fractional % 10U;
+        if (digit != 0) {
+          break;
         }
+        --count;
+        number_.fractional /= 10U;
 
       }
       // ... and even the decimal point if there are no
@@ -589,8 +583,9 @@ static size_t print_broken_up_decimal(
         }
       }
       // add extra 0s
-      while ((len < PRINTF_FTOA_BUFFER_SIZE) && (count-- > 0U)) {
+      while ((len < PRINTF_FTOA_BUFFER_SIZE) && (count > 0U)) {
         buf[len++] = '0';
+        --count;
       }
       if (len < PRINTF_FTOA_BUFFER_SIZE) {
         buf[len++] = '.';
@@ -598,10 +593,8 @@ static size_t print_broken_up_decimal(
     }
   }
   else {
-    if (flags & FLAGS_HASH) {
-      if (len < PRINTF_FTOA_BUFFER_SIZE) {
-        buf[len++] = '.';
-      }
+    if ((flags & FLAGS_HASH) && (len < PRINTF_FTOA_BUFFER_SIZE)) {
+      buf[len++] = '.';
     }
   }
 
@@ -828,7 +821,7 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
 
   if (!buffer) {
     // use null output function
-    out = out_discard;
+    out = &out_discard;
   }
 
   while (*format)
@@ -884,7 +877,7 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
         precision = atoi_(&format);
       }
       else if (*format == '*') {
-        const int precision_ = (int)va_arg(va, int);
+        const int precision_ = va_arg(va, int);
         precision = precision_ > 0 ? (unsigned int)precision_ : 0U;
         format++;
       }
@@ -1055,8 +1048,9 @@ static int _vsnprintf(out_fct_type out, char* buffer, const size_t maxlen, const
             }
           }
           // string output
-          while ((*p != 0) && (!(flags & FLAGS_PRECISION) || precision--)) {
+          while ((*p != 0) && (!(flags & FLAGS_PRECISION) || precision)) {
             out(*(p++), buffer, idx++, maxlen);
+            --precision;
           }
           // post padding
           if (flags & FLAGS_LEFT) {
@@ -1124,7 +1118,7 @@ int printf_(const char* format, ...)
   va_list va;
   va_start(va, format);
   char buffer[1];
-  const int ret = _vsnprintf(out_putchar, buffer, (size_t)-1, format, va);
+  const int ret = _vsnprintf(&out_putchar, buffer, (size_t)-1, format, va);
   va_end(va);
   return ret;
 }
@@ -1153,7 +1147,7 @@ int snprintf_(char* buffer, size_t count, const char* format, ...)
 int vprintf_(const char* format, va_list va)
 {
   char buffer[1];
-  return _vsnprintf(out_putchar, buffer, (size_t)-1, format, va);
+  return _vsnprintf(&out_putchar, buffer, (size_t)-1, format, va);
 }
 
 int vsprintf_(char* buffer, const char* format, va_list va)
